@@ -248,7 +248,7 @@ if missing_columns:
 st.sidebar.title("📚 공공도서관 분석")
 page = st.sidebar.radio(
     "메뉴",
-    ["🧭 탐구 질문과 모델", "🧹 데이터 전처리", "🤖 모델 학습 결과", "📊 모델 평가", "🛠️ 성능 개선", "🔎 군집 해석"],
+    ["🧭 문제 정의", "📈 데이터 분석", "🧹 데이터 전처리", "📏 기준선", "📊 모델 평가", "📝 느낀점"],
 )
 st.sidebar.divider()
 st.sidebar.subheader("공통 전처리 설정")
@@ -307,79 +307,140 @@ except Exception as error:
     st.exception(error)
     st.stop()
 
+# =========# ============================================================
+# 페이지 1: 문제 정의
 # ============================================================
-# 페이지 1: 탐구 질문과 모델 선정
-# ============================================================
-if page == "🧭 탐구 질문과 모델":
-    st.title("📚 공공도서관 유형 분석")
-    st.markdown("### 탐구 질문")
+if page == "🧭 문제 정의":
+    st.title("🧭 문제 정의")
     st.info("공공도서관의 장서, 인력, 이용 특성에 따라 어떤 유형으로 나뉠까?")
-
-    st.subheader("왜 군집화를 선택했을까?")
+    st.subheader("주제 선정 및 문제 정의")
     st.write(
-        "이번 탐구에서는 도서관의 유형을 미리 정해 두지 않았습니다. "
-        "따라서 정답 범주를 맞히는 분류나 미래의 수치를 예측하는 회귀보다, "
-        "비슷한 특성을 가진 도서관을 데이터에서 찾아 묶는 군집화가 적합합니다."
+        "도서관마다 보유 장서, 사서 수, 대출 이용 규모가 다릅니다. "
+        "이 차이를 바탕으로 공공도서관을 몇 가지 유형으로 나눌 수 있는지 알아보는 것이 이번 탐구의 목적입니다."
     )
+    st.subheader("회귀·분류·군집 중 무엇이 적합할까?")
     method_df = pd.DataFrame({
         "분석 방법": ["회귀", "분류", "군집화"],
-        "목적": ["숫자 예측", "미리 정한 범주 예측", "비슷한 데이터끼리 그룹 만들기"],
+        "목적": ["연속적인 숫자 예측", "미리 정한 범주 예측", "비슷한 데이터끼리 그룹 만들기"],
         "이번 질문과의 적합성": [
-            "낮음: 예측할 숫자가 중심이 아님",
-            "낮음: 미리 정한 유형이 없음",
-            "높음: 도서관 유형을 데이터에서 찾음",
+            "낮음: 예측할 미래 수치가 중심이 아님",
+            "낮음: 미리 정해진 도서관 유형이나 정답 라벨이 없음",
+            "높음: 도서관 유형을 데이터에서 직접 찾아야 함",
         ],
     })
     st.dataframe(method_df, use_container_width=True, hide_index=True)
+    st.success("따라서 정답 라벨 없이 비슷한 도서관을 묶는 비지도 학습인 군집화를 선택했습니다.")
 
-    st.subheader("선정한 모델 3개와 작동 원리")
-    col1, col2, col3 = st.columns(3)
-    with col1:
+    st.subheader("비교할 모델 후보 3개")
+    c1, c2, c3 = st.columns(3)
+    with c1:
         st.markdown("#### 1. K-Means")
-        st.write("군집 중심을 정하고, 각 도서관을 가장 가까운 중심에 배정합니다. 중심을 다시 계산하는 과정을 반복합니다.")
+        st.write("군집 중심을 기준으로 가까운 도서관을 배정하고, 중심을 반복해서 다시 계산합니다.")
         st.caption("가까운 도서관끼리 모으기")
-    with col2:
+    with c2:
         st.markdown("#### 2. 계층적 군집")
-        st.write("가장 가까운 데이터부터 차례로 합쳐 계층 구조를 만듭니다. 여기서는 Ward 방식으로 군집을 구성합니다.")
+        st.write("가장 가까운 데이터부터 차례로 합쳐 계층 구조를 만듭니다. 여기서는 Ward 방식을 사용합니다.")
         st.caption("작은 모둠부터 큰 모둠 만들기")
-    with col3:
+    with c3:
         st.markdown("#### 3. DBSCAN")
-        st.write("정해진 거리 안에 이웃이 충분히 많은 곳을 군집으로 만들고, 밀집 영역에서 떨어진 데이터는 노이즈로 표시합니다.")
-        st.caption("데이터가 빽빽한 곳을 하나로 묶기")
+        st.write("주변에 데이터가 충분히 모여 있는 곳을 군집으로 만들고, 떨어진 데이터는 노이즈로 구분합니다.")
+        st.caption("밀집된 데이터 영역 찾기")
 
-    st.subheader("베이스라인은 무엇일까?")
-    st.write(
-        "베이스라인은 후보 모델의 결과가 좋은지 판단하기 위한 기준선입니다. "
-        "이번 탐구에서는 K-Means를 베이스라인으로 정했습니다. 군집 수 K는 엘보 그래프에서 "
-        "군집 내 제곱합(SSE)의 감소 폭이 뚜렷하게 줄어드는 꺾임 지점을 참고해 선택합니다. "
-        "사이드바에서 선택한 K가 베이스라인에 적용됩니다. 각 도서관은 미래의 값이 아니라, "
-        "비슷한 특성을 가진 군집 번호를 부여받습니다."
-    )
-    st.info(f"베이스라인: K-Means (K={baseline_k}, 엘보 방법으로 K 선택). 후보 모델은 K-Means 군집 수 탐색, 계층적 군집, DBSCAN입니다.")
-
-    st.subheader("모델에 사용하는 변수")
+    st.subheader("분석 변수")
     feature_guide = {
         "장서수(인쇄)": "도서관이 보유한 인쇄 자료 규모",
         "사서수": "도서관의 전문 인력 규모",
-        "대출자수": "도서관을 이용해 대출한 이용자 규모",
-        "대출권수": "도서관의 자료 대출 이용 규모",
+        "대출자수": "자료를 대출한 이용자 규모",
+        "대출권수": "자료 대출 이용 규모",
         "자료구입비(천원)": "자료 구입에 사용한 예산 규모",
     }
-    st.dataframe(pd.DataFrame([{"변수": feature, "뜻": feature_guide[feature]} for feature in features]),
-                 use_container_width=True, hide_index=True)
-    st.caption("도서관명·코드·지역 등은 결과 해석용으로 보존하고 군집화 입력 변수에서는 제외합니다.")
-
-    a, b, c = st.columns(3)
-    a.metric("분석 대상 도서관", f"{len(work):,}곳")
-    b.metric("사용 변수", f"{len(features)}개")
-    c.metric("비교할 모델", "베이스라인 1 + 후보 3")
+    st.dataframe(
+        pd.DataFrame([{"변수": f, "의미": feature_guide[f]} for f in features]),
+        use_container_width=True, hide_index=True,
+    )
+    st.caption("도서관명·코드·지역은 결과를 해석할 때 사용하고, 군집 학습에는 숫자형 특성만 사용합니다.")
 
 # ============================================================
-# 페이지 2: 데이터 전처리
+# 페이지 2: 데이터 분석
+# ============================================================
+elif page == "📈 데이터 분석":
+    st.title("📈 데이터 분석")
+    st.write("모델을 학습하기 전에 데이터의 분포, 변수 사이의 관계, 이상치 후보를 살펴봅니다.")
+
+    st.subheader("1. 데이터 기본 정보")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("전체 도서관", f"{len(df):,}곳")
+    m2.metric("변수 개수", f"{len(df.columns)}개")
+    m3.metric("결측 셀", f"{int(df.isna().sum().sum()):,}개")
+    m4.metric("중복 행", f"{int(df.duplicated().sum()):,}개")
+    with st.expander("원본 데이터 미리 보기"):
+        st.dataframe(df.head(15), use_container_width=True, hide_index=True)
+
+    st.subheader("2. 숫자형 변수의 분포")
+    selected_for_plot = st.selectbox("분포를 확인할 변수", features, key="eda_hist_feature")
+    hist_data = pd.to_numeric(df[selected_for_plot], errors="coerce").dropna().to_frame()
+    h1, h2 = st.columns(2)
+    with h1:
+        st.plotly_chart(
+            px.histogram(hist_data, x=selected_for_plot, nbins=30,
+                         title=f"{selected_for_plot} 분포", labels={selected_for_plot: selected_for_plot}),
+            use_container_width=True,
+        )
+    with h2:
+        st.plotly_chart(
+            px.box(hist_data, y=selected_for_plot, points="outliers",
+                   title=f"{selected_for_plot} 상자그림"),
+            use_container_width=True,
+        )
+
+    st.subheader("3. 선택한 변수들의 상관관계")
+    corr = raw_x.corr(method="pearson")
+    corr_fig = px.imshow(
+        corr, text_auto=".2f", aspect="auto", color_continuous_scale="RdBu_r",
+        zmin=-1, zmax=1, title="피어슨 상관계수",
+    )
+    st.plotly_chart(corr_fig, use_container_width=True)
+    st.caption("상관계수는 두 변수가 함께 변하는 정도를 나타내며, 인과관계를 뜻하지는 않습니다.")
+
+    if len(features) >= 2:
+        st.subheader("4. 변수 두 개의 관계")
+        sx, sy = st.columns(2)
+        x_feature = sx.selectbox("가로축 변수", features, index=0, key="eda_x")
+        y_default = 1 if len(features) > 1 else 0
+        y_feature = sy.selectbox("세로축 변수", features, index=y_default, key="eda_y")
+        scatter_df = raw_x[[x_feature, y_feature]].copy()
+        scatter_df["도서관명"] = work["도서관명"].values
+        scatter_df["지역"] = work["행정구역"].values
+        st.plotly_chart(
+            px.scatter(scatter_df, x=x_feature, y=y_feature, hover_name="도서관명",
+                       hover_data=["지역"], title=f"{x_feature}와 {y_feature}의 관계"),
+            use_container_width=True,
+        )
+
+    st.subheader("5. 이상치 후보 확인(IQR 기준)")
+    outlier_rows = []
+    for col in features:
+        series = raw_x[col].dropna()
+        q1, q3 = series.quantile([0.25, 0.75])
+        iqr = q3 - q1
+        lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+        count = int(((series < lower) | (series > upper)).sum())
+        outlier_rows.append({"변수": col, "1사분위수": q1, "3사분위수": q3,
+                             "하한": lower, "상한": upper, "이상치 후보 수": count})
+    st.dataframe(pd.DataFrame(outlier_rows).style.format({
+        "1사분위수": "{:,.2f}", "3사분위수": "{:,.2f}", "하한": "{:,.2f}", "상한": "{:,.2f}"
+    }), use_container_width=True, hide_index=True)
+    st.info(
+        "IQR 기준에서 벗어난 값은 이상치 후보입니다. 규모가 큰 도서관은 실제로 장서와 이용량이 많을 수 있으므로 "
+        "이 숫자만으로 삭제하지 않고, 상자그림과 원자료를 함께 확인합니다."
+    )
+
+# ============================================================
+# 페이지 3: 데이터 전처리
 # ============================================================
 elif page == "🧹 데이터 전처리":
     st.title("🧹 데이터 전처리")
-    st.write("원본의 결측치·중복·0값을 확인하고, 같은 전처리 결과를 네 가지 모델 실행에 공통으로 사용합니다.")
+    st.write("결측치와 비정상적인 숫자값을 확인하고, 군집 모델이 거리를 공정하게 계산할 수 있도록 변환합니다.")
 
     a, b, c, d = st.columns(4)
     a.metric("원본 행", f"{len(df):,}개")
@@ -387,11 +448,7 @@ elif page == "🧹 데이터 전처리":
     c.metric("결측 셀", f"{int(df.isna().sum().sum()):,}개")
     d.metric("중복 행", f"{int(df.duplicated().sum()):,}개")
 
-    st.subheader("1. 원본 데이터 확인")
-    with st.expander("원본 데이터 미리 보기", expanded=False):
-        st.dataframe(df.head(20), use_container_width=True, hide_index=True)
-
-    st.subheader("2. 결측치와 0값 확인")
+    st.subheader("1. 결측치와 0값 확인")
     missing_df = pd.DataFrame({
         "열 이름": df.columns,
         "결측치 수": [int(df[column].isna().sum()) for column in df.columns],
@@ -407,59 +464,124 @@ elif page == "🧹 데이터 전처리":
     with right:
         st.write("**숫자형 변수의 0값 현황**")
         st.dataframe(zero_df, use_container_width=True, hide_index=True)
-    st.warning("0은 결측치와 다릅니다. 사서수 0명이나 대출 실적 0건도 실제 운영 상황일 수 있어 기본 설정에서는 삭제하지 않습니다.")
+    st.warning("0은 결측치와 다릅니다. 사서수 0명이나 대출 실적 0건도 실제 상황일 수 있어 기본 설정에서는 삭제하지 않습니다.")
 
-    st.subheader("3. 군집화에서 제외하거나 보존하는 열")
+    st.subheader("2. 분석에 사용하지 않는 열")
     drop_info = pd.DataFrame({
         "열": ["도서관명", "도서관코드", "평가년도", "도서관구분", "행정구역", "시군구"],
-        "처리": [
-            "결과 해석·표시용으로 보존", "식별용으로 보존", "2024년 단일 기준이므로 학습 제외",
+        "처리 이유": [
+            "결과 해석·표시용으로 보존", "식별용으로 보존", "모든 행이 같은 연도이므로 학습 제외",
             "동일한 구분값이므로 학습 제외", "지역 비교용으로 보존", "지역 비교용으로 보존",
         ],
     })
     st.dataframe(drop_info, use_container_width=True, hide_index=True)
 
-    st.subheader("4. 전처리 결과")
-    x1, x2, x3, x4 = st.columns(4)
-    x1.metric("처음 행 수", f"{prep_info['initial_rows']:,}")
-    x2.metric("대출 0건 동시 행", f"{prep_info['both_zero_count']:,}")
-    x3.metric("결측·음수로 제외", f"{prep_info['removed_invalid']:,}")
-    x4.metric("최종 학습 행", f"{prep_info['final_rows']:,}")
+    st.subheader("3. 행 단위 전처리 결과")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("처음 행 수", f"{prep_info['initial_rows']:,}")
+    m2.metric("대출 0건 동시 행", f"{prep_info['both_zero_count']:,}")
+    m3.metric("결측·음수로 제외", f"{prep_info['removed_invalid']:,}")
+    m4.metric("최종 학습 행", f"{prep_info['final_rows']:,}")
+    st.caption("대출자수와 대출권수가 모두 0인 행은 기본 설정에서 유지합니다. 결측치 또는 음수가 있는 학습 행만 제외합니다.")
 
-    st.write("**현재 선택한 변수의 기초통계**")
-    stats = raw_x.describe().T
-    stats["중앙값"] = raw_x.median()
-    stats = stats.rename(columns={
-        "count": "개수", "mean": "평균", "std": "표준편차", "min": "최솟값",
-        "25%": "1사분위수", "50%": "중앙값(50%)", "75%": "3사분위수", "max": "최댓값",
-    })
-    st.dataframe(stats, use_container_width=True)
-
-    st.subheader("5. 모든 모델에 공통 적용한 변환")
-    st.write(("① log1p로 큰 값과 작은 값의 차이를 완화 → " if use_log else "① 로그 변환 생략 → ")
-             + "② StandardScaler로 평균 0·표준편차 1에 맞춤 → ③ 동일한 표준화 데이터로 베이스라인과 세 후보 모델 학습")
-    preview = pd.DataFrame(scaled_x, columns=features, index=work.index).reset_index(drop=True)
-    st.write("**표준화가 끝난 학습 데이터 미리 보기**")
-    st.dataframe(preview.head(10), use_container_width=True, hide_index=True)
-    st.success("네 가지 결과는 같은 행, 같은 변수, 같은 로그 변환 및 표준화 조건에서 계산됩니다. 군집화는 정답 라벨이 없는 비지도 학습이므로 일반적인 지도학습의 훈련·시험 데이터 분할 대신 전체 분석 대상을 동일하게 사용합니다.")
+    st.subheader("4. 이상치 후보 처리 방법")
+    st.write(
+        "IQR 기준으로 표시된 이상치 후보를 일괄 삭제하지 않았습니다. 실제 대형 도서관일 수 있기 때문입니다. "
+        "대신 log1p 변환으로 큰 값과 작은 값의 차이를 완화하고, StandardScaler로 각 변수의 단위를 맞춥니다. "
+        "다음 '모델 평가'에서 RobustScaler를 적용한 결과도 비교합니다."
+    )
+    st.subheader("5. 변환 및 표준화 결과")
+    st.write(
+        ("① log1p 변환 적용 → " if use_log else "① 로그 변환 생략 → ")
+        + "② StandardScaler로 평균 0·표준편차 1에 맞춤 → ③ 동일한 데이터로 모델 학습"
+    )
+    scaled_preview = pd.DataFrame(scaled_x, columns=features).head(10)
+    st.dataframe(scaled_preview, use_container_width=True, hide_index=True)
+    st.success("모델마다 동일한 행과 변수를 사용하도록 전처리했습니다. 군집화는 정답 라벨이 없는 비지도 학습이므로 전체 자료의 군집 구조를 탐색합니다.")
 
 # ============================================================
-# 페이지 3: 모델 학습 결과
+# 페이지 4: 기준선
 # ============================================================
-elif page == "🤖 모델 학습 결과":
-    st.title("🤖 모델 학습 결과")
-    st.write("베이스라인 1개와 후보 모델 3개를 동일한 전처리 데이터에 적용했습니다.")
+elif page == "📏 기준선":
+    st.title("📏 기준선")
+    st.write("기준선(베이스라인)은 후보 모델이 얼마나 나은지 비교하기 위한 출발점입니다.")
+    st.subheader("1. 베이스라인 모델")
+    st.markdown("**K-Means 기본 모델**")
+    st.write(
+        f"각 도서관을 가까운 중심점에 배정해 {baseline_k}개 그룹으로 나눕니다. "
+        "군집 중심을 다시 계산하고 도서관을 재배정하는 과정을 반복합니다."
+    )
+    baseline_row = comparison_df.loc[comparison_df["모델"] == BASELINE_NAME].iloc[0]
+    x1, x2, x3 = st.columns(3)
+    x1.metric("베이스라인 K", f"{baseline_k}")
+    x2.metric("군집 수", f"{int(baseline_row['군집 수'])}개")
+    x3.metric("실루엣 점수", format_score(baseline_row["실루엣 점수"]))
 
-    compact = comparison_df[["모델", "구분", "설정", "군집 수", "노이즈 수", "군집 포함률(%)", "실루엣 점수"]].copy()
-    compact["군집 포함률(%)"] = compact["군집 포함률(%)"].map(lambda value: f"{value:.1f}%")
-    compact["실루엣 점수"] = compact["실루엣 점수"].map(format_score)
-    st.dataframe(compact, use_container_width=True, hide_index=True)
+    st.subheader("2. 엘보 방법으로 K 선택")
+    st.write(
+        "K를 늘리면 군집 내 제곱합(SSE)은 대체로 작아집니다. 다만 어느 지점부터 감소 폭이 완만해지면 "
+        "그 지점을 군집 수 선택의 참고 기준으로 삼습니다. 엘보 방법은 참고 방법이며, 꺾임 지점이 항상 뚜렷한 것은 아닙니다."
+    )
+    elbow_fig = px.line(elbow_df, x="K", y="군집 내 제곱합(SSE)", markers=True,
+                        title="K-Means 엘보 그래프")
+    elbow_fig.add_vline(x=baseline_k, line_dash="dash", annotation_text=f"기준선 K={baseline_k}")
+    st.plotly_chart(elbow_fig, use_container_width=True)
+    st.dataframe(elbow_df, use_container_width=True, hide_index=True)
 
-    st.caption("실루엣 점수는 -1~1이며 높을수록 군집 안은 가깝고 군집 간은 멀다는 뜻입니다. DBSCAN은 노이즈를 제외한 데이터로 점수를 계산하므로 군집 포함률과 가장 작은 군집의 크기를 반드시 함께 확인하세요.")
+    before_row = elbow_df.loc[elbow_df["K"] == baseline_k - 1]
+    current_row = elbow_df.loc[elbow_df["K"] == baseline_k]
+    after_row = elbow_df.loc[elbow_df["K"] == baseline_k + 1]
+    if not before_row.empty and not current_row.empty and not after_row.empty:
+        sse_before = float(before_row["군집 내 제곱합(SSE)"].iloc[0])
+        sse_current = float(current_row["군집 내 제곱합(SSE)"].iloc[0])
+        sse_after = float(after_row["군집 내 제곱합(SSE)"].iloc[0])
+        decrease_before = (sse_before - sse_current) / sse_before * 100
+        decrease_after = (sse_current - sse_after) / sse_current * 100
+        st.info(
+            f"K={baseline_k-1}에서 {baseline_k}로 늘릴 때 SSE는 {decrease_before:.1f}% 감소하고, "
+            f"K={baseline_k}에서 {baseline_k+1}로 늘릴 때는 {decrease_after:.1f}% 감소합니다. "
+            "그래프의 기울기와 함께 살펴보고 기준선 K를 선택한 이유를 설명하세요."
+        )
+    else:
+        st.caption("선택한 K 전후의 값을 함께 비교하려면 K 탐색 최대값을 조정해 주세요.")
 
-    tabs = st.tabs(["K-Means 후보", "계층적 군집", "DBSCAN"])
-    tab_names = ["K-Means 군집 수 탐색", "계층적 군집", "DBSCAN"]
-    for tab, model_name in zip(tabs, tab_names):
+    st.subheader("3. 베이스라인의 의미")
+    st.write(
+        "이 베이스라인은 도서관의 미래 대출량을 예측하지 않습니다. 각 도서관에 비슷한 특성을 가진 그룹 번호를 부여합니다. "
+        "후보 군집화 모델의 실루엣 점수를 이 기준선과 비교해 군집 분리 정도를 평가합니다."
+    )
+
+# ============================================================
+# 페이지 5: 모델 평가
+# ============================================================
+elif page == "📊 모델 평가":
+    st.title("📊 모델 평가")
+    st.write("후보 모델의 학습 결과와 평가 지표를 확인하고, 전처리 방법을 바꾸어 성능이 개선되는지도 비교합니다.")
+
+    st.subheader("1. 세 후보 모델과 베이스라인의 비교")
+    comparison_view = comparison_df.copy()
+    comparison_view["실루엣 점수"] = comparison_view["실루엣 점수"].map(format_score)
+    comparison_view["베이스라인 대비 점수 차이"] = comparison_view["베이스라인 대비 점수 차이"].map(
+        lambda v: f"{v:+.3f}" if pd.notna(v) else "계산 불가"
+    )
+    comparison_view["최종 후보 조건"] = comparison_view["최종 후보 조건"].map(lambda v: "충족" if v else "미충족")
+    st.dataframe(comparison_view[[
+        "모델", "설정", "군집 수", "노이즈 수", "군집 포함률(%)", "가장 작은 군집",
+        "실루엣 점수", "베이스라인 대비 점수 차이", "최종 후보 조건",
+    ]], use_container_width=True, hide_index=True)
+    st.caption("실루엣 점수는 -1~1이며 일반적으로 높을수록 군집 내부는 가깝고 군집 사이는 멉니다. DBSCAN은 노이즈를 제외한 값으로 점수를 계산하므로 포함률도 함께 봐야 합니다.")
+
+    plot_data = comparison_df.dropna(subset=["실루엣 점수"]).copy()
+    if not plot_data.empty:
+        score_fig = px.bar(plot_data, x="모델", y="실루엣 점수", color="구분", text_auto=".3f",
+                           title="베이스라인과 후보 모델의 실루엣 점수")
+        score_fig.update_layout(xaxis_tickangle=-15, yaxis_range=[-1, 1])
+        st.plotly_chart(score_fig, use_container_width=True)
+
+    st.subheader("2. 모델별 군집 결과와 특성")
+    model_tabs = st.tabs(["K-Means 후보", "계층적 군집", "DBSCAN"])
+    candidate_names = ["K-Means 군집 수 탐색", "계층적 군집", "DBSCAN"]
+    for tab, model_name in zip(model_tabs, candidate_names):
         with tab:
             labels = model_results[model_name]
             row = comparison_df.loc[comparison_df["모델"] == model_name].iloc[0]
@@ -469,386 +591,138 @@ elif page == "🤖 모델 학습 결과":
             p3.metric("실루엣 점수", format_score(row["실루엣 점수"]))
             p4.metric("베이스라인 대비", f"{row['베이스라인 대비 점수 차이']:+.3f}" if pd.notna(row["베이스라인 대비 점수 차이"]) else "계산 불가")
 
-            chart_df = pca_df.copy()
-            fig = px.scatter(
-                chart_df, x="주성분 1", y="주성분 2", color=model_name,
-                hover_name="도서관명",
-                hover_data={"행정구역": True, "시군구": True, "주성분 1": ":.2f", "주성분 2": ":.2f"},
-                title=f"{model_name} 군집 분포 (PCA 2차원 시각화)",
-            )
-            fig.update_layout(legend_title_text="군집", height=480)
-            st.plotly_chart(fig, use_container_width=True)
-
-            st.write("**군집별 규모와 변수 평균·중앙값**")
+            graph_df = pca_df.copy()
+            scatter = px.scatter(graph_df, x="주성분 1", y="주성분 2", color=model_name,
+                                 hover_name="도서관명", hover_data={"행정구역": True, "시군구": True},
+                                 title=f"{model_name}: PCA 2차원 군집 분포")
+            st.plotly_chart(scatter, use_container_width=True)
+            st.write("**군집별 도서관 수와 변수 특성**")
             st.dataframe(make_cluster_summary(raw_x, labels, features), use_container_width=True, hide_index=True)
-            count_df = pd.Series([display_cluster_label(value) for value in labels]).value_counts().rename_axis("군집").reset_index(name="도서관 수")
-            st.plotly_chart(px.bar(count_df, x="군집", y="도서관 수", color="군집", title="군집별 도서관 수"), use_container_width=True)
-
+            counts = pd.Series([display_cluster_label(v) for v in labels]).value_counts().rename_axis("군집").reset_index(name="도서관 수")
+            st.plotly_chart(px.bar(counts, x="군집", y="도서관 수", color="군집", title="군집별 도서관 수"), use_container_width=True)
             if model_name == "DBSCAN":
-                if not bool(row["최종 후보 조건"]):
-                    st.warning("현재 DBSCAN 설정은 최종 후보 조건을 충족하지 못합니다. 노이즈 비율이나 가장 작은 군집의 크기가 기준에 미달할 수 있습니다. 사이드바의 eps·최소 이웃 수를 조절해 보세요.")
-                st.caption("DBSCAN의 실루엣 점수는 노이즈를 제외한 도서관만 대상으로 계산합니다.")
+                st.warning(f"DBSCAN 노이즈는 {int(row['노이즈 수'])}곳입니다. 실루엣 점수가 높더라도 노이즈와 작은 군집을 함께 고려해야 합니다.")
 
-    st.subheader("모델별 군집 번호가 추가된 결과")
-    st.dataframe(result_df, use_container_width=True, hide_index=True, height=360)
-    csv_data = result_df.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
-    st.download_button("군집 결과 CSV 다운로드", data=csv_data,
-                       file_name="공공도서관_군집분석결과.csv", mime="text/csv")
-
-# ============================================================
-# 페이지 4: 모델 평가
-# ============================================================
-elif page == "📊 모델 평가":
-    st.title("📊 모델 평가")
-    st.write("군집화 평가에서는 실루엣 점수로 모델 결과를 비교하고, 엘보 방법으로 K-Means의 군집 수를 선택한 근거를 확인합니다.")
-
-    st.subheader("1. 엘보 방법: 베이스라인의 K를 어떻게 정했을까?")
+    st.subheader("3. 성능 개선: 전처리 방법 바꾸어 다시 학습")
     st.write(
-        "K-Means의 K를 늘리면 보통 군집 내 제곱합(SSE)은 계속 감소합니다. "
-        "하지만 K가 커질수록 군집을 더 잘게 나누는 것이므로, SSE가 급격히 줄어들다가 "
-        "감소 폭이 완만해지는 지점(팔꿈치처럼 꺾이는 지점)을 살펴 K를 정합니다. "
-        "아래 그래프에서 선택한 K를 확인하고, 데이터의 꺾임과 얼마나 잘 맞는지 설명하세요."
+        "이상치 후보를 삭제하는 대신, 극단값의 영향을 줄일 수 있는 RobustScaler를 시험합니다. "
+        "RobustScaler는 중앙값과 사분위 범위를 사용합니다. 기존 StandardScaler와 비교할 때 데이터 행, 변수, 로그 변환, 모델 설정은 동일하게 유지합니다."
     )
-    elbow_fig = px.line(
-        elbow_df,
-        x="K",
-        y="군집 내 제곱합(SSE)",
-        markers=True,
-        text="K",
-        title="K-Means 엘보 그래프: K와 군집 내 제곱합(SSE)의 관계",
-    )
-    elbow_fig.update_traces(textposition="top center")
-    elbow_fig.add_vline(
-        x=baseline_k,
-        line_dash="dash",
-        annotation_text=f"선택한 K={baseline_k}",
-        annotation_position="top right",
-    )
-    elbow_fig.update_layout(xaxis_title="군집 수 K", yaxis_title="군집 내 제곱합(SSE)")
-    st.plotly_chart(elbow_fig, use_container_width=True)
-    elbow_view = elbow_df.copy()
-    elbow_view["군집 내 제곱합(SSE)"] = elbow_view["군집 내 제곱합(SSE)"].map(lambda v: f"{v:,.2f}")
-    elbow_view["직전 K 대비 감소량"] = elbow_view["직전 K 대비 감소량"].map(lambda v: "-" if pd.isna(v) else f"{v:,.2f}")
-    elbow_view["직전 K 대비 감소율(%)"] = elbow_view["직전 K 대비 감소율(%)"].map(lambda v: "-" if pd.isna(v) else f"{v:.1f}%")
-    st.dataframe(elbow_view, use_container_width=True, hide_index=True)
+    improved_transformed = np.log1p(raw_x) if use_log else raw_x.copy()
+    standard_matrix = StandardScaler().fit_transform(improved_transformed)
+    robust_matrix = RobustScaler().fit_transform(improved_transformed)
 
-    current_row = elbow_df.loc[elbow_df["K"] == baseline_k]
-    previous_row = elbow_df.loc[elbow_df["K"] == baseline_k - 1]
-    next_row = elbow_df.loc[elbow_df["K"] == baseline_k + 1]
-    next_next_row = elbow_df.loc[elbow_df["K"] == baseline_k + 2]
-    if not current_row.empty and not previous_row.empty and not next_row.empty:
-        before_sse = float(previous_row["군집 내 제곱합(SSE)"].iloc[0])
-        current_sse = float(current_row["군집 내 제곱합(SSE)"].iloc[0])
-        next_sse = float(next_row["군집 내 제곱합(SSE)"].iloc[0])
-        before_drop = (before_sse - current_sse) / before_sse * 100
-        after_drop = (current_sse - next_sse) / current_sse * 100
-        later_text = ""
-        if not next_next_row.empty:
-            next_next_sse = float(next_next_row["군집 내 제곱합(SSE)"].iloc[0])
-            later_drop = (next_sse - next_next_sse) / next_sse * 100
-            later_text = f" 그다음 K={baseline_k+1}에서 K={baseline_k+2}로 늘릴 때의 감소율은 {later_drop:.1f}%입니다."
-        st.info(
-            f"현재 베이스라인은 K={baseline_k}입니다. K를 {baseline_k-1}에서 {baseline_k}로 늘릴 때 "
-            f"SSE가 {before_drop:.1f}% 감소하고, {baseline_k}에서 {baseline_k+1}로 늘릴 때는 "
-            f"{after_drop:.1f}% 감소합니다.{later_text} 그래프와 감소율을 함께 보고 감소 폭이 완만해지는 "
-            "꺾임 지점을 선택한 이유로 설명하세요. 엘보 지점은 데이터에 따라 다소 주관적일 수 있습니다."
-        )
-    else:
-        st.info(
-            f"현재 베이스라인은 K={baseline_k}입니다. 그래프에서 이 지점 전후의 SSE 감소 폭을 비교해 "
-            "감소율이 완만해지는지 확인하고 선택 이유를 설명하세요."
-        )
-
-    st.subheader("2. 베이스라인은 무엇을 하는 모델일까?")
-    st.write(
-        "베이스라인은 후보 모델이 얼마나 나아졌는지 비교하기 위한 기준선입니다. "
-        f"이번 앱에서는 엘보 그래프를 참고해 선택한 K={baseline_k}의 K-Means를 기준으로 두었습니다. "
-        f"이 모델은 각 도서관을 {baseline_k}개 그룹 중 하나로 나누며, 후보 모델과 비교할 때 실루엣 점수를 사용합니다."
-    )
-    baseline_row = comparison_df.loc[comparison_df["모델"] == BASELINE_NAME].iloc[0]
-    a, b, c = st.columns(3)
-    a.metric("베이스라인 군집 수", f"{int(baseline_row['군집 수'])}개")
-    b.metric("베이스라인 실루엣 점수", format_score(baseline_row["실루엣 점수"]))
-    c.metric("베이스라인 최소 군집", f"{int(baseline_row['가장 작은 군집'])}곳")
-
-    st.subheader("3. 후보 모델별 베이스라인과의 차이")
-    comparison_view = comparison_df.copy()
-    comparison_view["실루엣 점수"] = comparison_view["실루엣 점수"].map(format_score)
-    comparison_view["베이스라인 대비 점수 차이"] = comparison_view["베이스라인 대비 점수 차이"].map(
-        lambda value: f"{value:+.3f}" if pd.notna(value) else "계산 불가"
-    )
-    comparison_view["최종 후보 조건"] = comparison_view["최종 후보 조건"].map(lambda value: "충족" if value else "미충족")
-    st.dataframe(comparison_view[[
-        "모델", "설정", "군집 수", "노이즈 수", "군집 포함률(%)", "가장 작은 군집",
-        "최소 군집 비율(%)", "실루엣 점수", "베이스라인 대비 점수 차이", "최종 후보 조건",
-    ]], use_container_width=True, hide_index=True)
-
-    st.write("**베이스라인과 후보 모델의 실루엣 점수 비교**")
-    plot_data = comparison_df.dropna(subset=["실루엣 점수"]).copy()
-    fig = px.bar(plot_data, x="모델", y="실루엣 점수", color="구분", text_auto=".3f",
-                 title="실루엣 점수 비교 (높을수록 군집 내부 응집도와 군집 간 분리가 양호)")
-    fig.update_layout(xaxis_tickangle=-20, yaxis_range=[-1, 1])
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.subheader("4. 어떤 모델을 최종 후보로 볼까?")
-    candidates = comparison_df[(comparison_df["모델"] != BASELINE_NAME) & comparison_df["최종 후보 조건"]].copy()
-    if len(candidates):
-        chosen = candidates.sort_values("실루엣 점수", ascending=False).iloc[0]
-        delta = float(chosen["베이스라인 대비 점수 차이"])
-        if delta > 0:
-            st.success(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**입니다. 실루엣 점수 {chosen['실루엣 점수']:.3f}으로 베이스라인보다 {delta:+.3f} 높습니다.")
-        elif delta < 0:
-            st.warning(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**이지만, 실루엣 점수 {chosen['실루엣 점수']:.3f}으로 베이스라인보다 {delta:+.3f} 낮습니다. 현재 설정에서는 베이스라인이 더 높은 점수를 보였습니다.")
-        else:
-            st.info(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**이며, 실루엣 점수는 베이스라인과 같습니다({chosen['실루엣 점수']:.3f}).")
-        st.write(
-            f"후보 모델의 군집 수는 {int(chosen['군집 수'])}개, 노이즈는 {int(chosen['노이즈 수'])}개, "
-            f"군집 포함률은 {chosen['군집 포함률(%)']:.1f}%, 가장 작은 군집은 {int(chosen['가장 작은 군집'])}곳입니다. "
-            "따라서 점수 차이와 함께 군집 크기 및 노이즈 비율도 고려해야 합니다."
-        )
-        st.markdown("**보고서 해석 예시**")
-        st.write(
-            f"베이스라인 K-Means(K={baseline_k})의 실루엣 점수는 {baseline_row['실루엣 점수']:.3f}이고, "
-            f"가장 높은 후보 모델인 {chosen['모델']}의 점수는 {chosen['실루엣 점수']:.3f}이다. "
-            f"두 점수의 차이는 {delta:+.3f}이므로, "
-            + ("후보 모델이 군집 간 분리와 군집 내부 응집도에서 더 나은 결과를 보였다." if delta > 0 else
-               "후보 모델이 베이스라인보다 더 나은 실루엣 점수를 보이지는 못했다." if delta < 0 else
-               "후보 모델과 베이스라인의 실루엣 점수는 같았다.")
-            + " 다만 DBSCAN은 노이즈를 제외하고 점수를 계산하므로 군집 포함률과 가장 작은 군집의 크기도 함께 고려하였다."
-        )
-    else:
-        st.warning("현재 설정에서 최종 후보 조건을 충족한 후보 모델이 없습니다. DBSCAN 설정 또는 최소 군집 크기·포함률 기준을 조정해 보세요.")
-
-    db_row = comparison_df.loc[comparison_df["모델"] == "DBSCAN"].iloc[0]
-    if not bool(db_row["최종 후보 조건"]):
-        st.info(
-            "현재 DBSCAN은 실루엣 점수가 높더라도 작은 군집이 너무 작거나 노이즈를 제외한 데이터 비율이 기준보다 낮아 "
-            "최종 후보 조건에서 제외되었습니다. 이것은 DBSCAN이 항상 나쁘다는 뜻이 아니라, 이번 데이터와 설정에서는 군집이 충분한 규모로 형성되지 않았다는 의미입니다."
-        )
-
-    st.subheader("5. 이번 비교에서 지켜야 할 공정한 조건")
-    st.markdown(
-        "- 네 가지 결과 모두 같은 도서관 행과 같은 선택 변수를 사용합니다.\n"
-        "- 로그 변환 여부와 표준화 방법도 모든 모델에 동일하게 적용합니다.\n"
-        "- K-Means는 random_state=42로 고정하고, K-Means·계층적 군집의 K 탐색 범위는 동일하게 둡니다.\n"
-        "- 군집화는 정답 라벨이 없는 비지도 학습이므로 일반적인 분류·회귀처럼 정답을 기준으로 훈련/시험 분할을 하지 않습니다."
-    )
-    st.caption("주의: DBSCAN 실루엣 점수는 노이즈를 제외하고 계산합니다. 따라서 실루엣 점수 차이만으로 모델이 무조건 더 우수하다고 단정하지 않고, 군집 포함률과 최소 군집 크기를 함께 해석합니다.")
-
-# ============================================================
-# 페이지 5: 성능 개선
-# ============================================================
-elif page == "🛠️ 성능 개선":
-    st.title("🛠️ 성능 개선")
-    st.write(
-        "기존 전처리와 개선 전처리를 같은 데이터와 변수에 적용한 뒤, "
-        "같은 군집화 모델을 다시 학습하여 실루엣 점수를 비교합니다."
-    )
-
-    st.subheader("1. 어떤 전처리를 개선했을까?")
-    st.markdown(
-        "**기존 전처리:** 선택 변수 → (선택한 경우) log1p 변환 → StandardScaler\n\n"
-        "**개선 전처리:** 선택 변수 → (선택한 경우) log1p 변환 → RobustScaler"
-    )
-    st.write(
-        "RobustScaler는 평균과 표준편차 대신 중앙값과 사분위 범위를 기준으로 값을 조정합니다. "
-        "따라서 일부 매우 큰 값이나 작은 값이 표준화 결과에 미치는 영향을 StandardScaler보다 줄이는 데 도움이 될 수 있습니다. "
-        "이 데이터는 도서관 규모의 차이가 크므로, 극단적으로 큰 규모의 도서관이 거리 계산에 미치는 영향을 줄이는 방법으로 시험합니다."
-    )
-    st.info(
-        "이번 비교에서는 데이터 행, 선택 변수, 로그 변환 여부, 모델 설정(K·eps·min_samples)을 그대로 유지하고 "
-        "스케일러만 StandardScaler에서 RobustScaler로 바꿉니다. 따라서 전처리 방식의 차이를 비교하기 쉽습니다."
-    )
-
-    # 같은 학습 대상과 변환 방식을 유지하고 스케일러만 교체
-    improvement_transformed = np.log1p(raw_x) if use_log else raw_x.copy()
-    standard_x_for_test = StandardScaler().fit_transform(improvement_transformed)
-    robust_x = RobustScaler().fit_transform(improvement_transformed)
-
-    def train_fixed_models(matrix):
+    def fixed_models(matrix):
         return {
             "K-Means": KMeans(n_clusters=baseline_k, random_state=42, n_init=20).fit_predict(matrix),
             "계층적 군집": AgglomerativeClustering(n_clusters=baseline_k, linkage="ward").fit_predict(matrix),
             "DBSCAN": DBSCAN(eps=eps, min_samples=min_samples).fit_predict(matrix),
         }
 
-    before_labels = train_fixed_models(standard_x_for_test)
-    after_labels = train_fixed_models(robust_x)
-
-    rows = []
+    labels_before = fixed_models(standard_matrix)
+    labels_after = fixed_models(robust_matrix)
+    improvement_rows = []
     for model_name in ["K-Means", "계층적 군집", "DBSCAN"]:
-        before_is_dbscan = model_name == "DBSCAN"
-        before_metric = cluster_metrics(
-            standard_x_for_test, before_labels[model_name], ignore_noise=before_is_dbscan
-        )
-        after_metric = cluster_metrics(
-            robust_x, after_labels[model_name], ignore_noise=before_is_dbscan
-        )
-        rows.append({
+        is_db = model_name == "DBSCAN"
+        old_metrics = cluster_metrics(standard_matrix, labels_before[model_name], ignore_noise=is_db)
+        new_metrics = cluster_metrics(robust_matrix, labels_after[model_name], ignore_noise=is_db)
+        old_score, new_score = old_metrics["실루엣 점수"], new_metrics["실루엣 점수"]
+        improvement_rows.append({
             "모델": model_name,
-            "기존 실루엣": before_metric["실루엣 점수"],
-            "개선 실루엣": after_metric["실루엣 점수"],
-            "점수 변화": after_metric["실루엣 점수"] - before_metric["실루엣 점수"]
-                if pd.notna(before_metric["실루엣 점수"]) and pd.notna(after_metric["실루엣 점수"]) else np.nan,
-            "개선 후 군집 수": after_metric["군집 수"],
-            "개선 후 노이즈 수": after_metric["노이즈 수"],
-            "개선 후 군집 포함률(%)": after_metric["군집 포함률(%)"],
-            "개선 후 가장 작은 군집": after_metric["가장 작은 군집"],
-            "개선 후 최소 군집 비율(%)": after_metric["최소 군집 비율(%)"],
+            "기존(StandardScaler)": old_score,
+            "개선(RobustScaler)": new_score,
+            "점수 변화": new_score - old_score if pd.notna(old_score) and pd.notna(new_score) else np.nan,
+            "개선 후 군집 수": new_metrics["군집 수"],
+            "개선 후 노이즈": new_metrics["노이즈 수"],
+            "개선 후 최소 군집": new_metrics["가장 작은 군집"],
+            "개선 후 포함률(%)": new_metrics["군집 포함률(%)"],
         })
-    improvement_df = pd.DataFrame(rows)
+    improvement_df = pd.DataFrame(improvement_rows)
+    show_improvement = improvement_df.copy()
+    for col in ["기존(StandardScaler)", "개선(RobustScaler)"]:
+        show_improvement[col] = show_improvement[col].map(format_score)
+    show_improvement["점수 변화"] = show_improvement["점수 변화"].map(lambda v: f"{v:+.3f}" if pd.notna(v) else "계산 불가")
+    st.dataframe(show_improvement, use_container_width=True, hide_index=True)
 
-    st.subheader("2. 같은 모델을 다시 학습한 결과")
-    st.caption(
-        f"K-Means와 계층적 군집은 K={baseline_k}, DBSCAN은 eps={eps:.2f}, "
-        f"min_samples={min_samples}로 기존·개선 전처리에서 동일하게 실행했습니다."
-    )
-    score_view = improvement_df.copy()
-    for col in ["기존 실루엣", "개선 실루엣", "점수 변화"]:
-        score_view[col] = score_view[col].map(format_score) if col != "점수 변화" else score_view[col].map(
-            lambda v: f"{v:+.3f}" if pd.notna(v) else "계산 불가"
-        )
-    score_view["개선 후 군집 포함률(%)"] = score_view["개선 후 군집 포함률(%)"].map(lambda v: f"{v:.1f}%")
-    score_view["개선 후 최소 군집 비율(%)"] = score_view["개선 후 최소 군집 비율(%)"].map(lambda v: f"{v:.1f}%")
-    st.dataframe(score_view, use_container_width=True, hide_index=True)
+    score_change_rows = []
+    for _, r in improvement_df.iterrows():
+        if pd.notna(r["기존(StandardScaler)"]):
+            score_change_rows.append({"모델": r["모델"], "전처리": "기존 StandardScaler", "실루엣 점수": r["기존(StandardScaler)"]})
+        if pd.notna(r["개선(RobustScaler)"]):
+            score_change_rows.append({"모델": r["모델"], "전처리": "개선 RobustScaler", "실루엣 점수": r["개선(RobustScaler)"]})
+    if score_change_rows:
+        st.plotly_chart(px.bar(pd.DataFrame(score_change_rows), x="모델", y="실루엣 점수",
+                               color="전처리", barmode="group", text_auto=".3f",
+                               title="전처리 변경 전후 실루엣 점수 비교"), use_container_width=True)
 
-    plot_rows = []
-    for _, result in improvement_df.iterrows():
-        if pd.notna(result["기존 실루엣"]):
-            plot_rows.append({"모델": result["모델"], "전처리": "기존: StandardScaler", "실루엣 점수": result["기존 실루엣"]})
-        if pd.notna(result["개선 실루엣"]):
-            plot_rows.append({"모델": result["모델"], "전처리": "개선: RobustScaler", "실루엣 점수": result["개선 실루엣"]})
-    if plot_rows:
-        improve_fig = px.bar(
-            pd.DataFrame(plot_rows), x="모델", y="실루엣 점수", color="전처리", barmode="group",
-            text_auto=".3f", title="전처리 변경 전후 실루엣 점수 비교"
-        )
-        improve_fig.update_layout(yaxis_range=[-1, 1])
-        st.plotly_chart(improve_fig, use_container_width=True)
-
-    st.subheader("3. 개선된 데이터로 다시 학습한 군집 결과")
-    improved_tabs = st.tabs(["K-Means", "계층적 군집", "DBSCAN"])
-    names = ["K-Means", "계층적 군집", "DBSCAN"]
-    pca_after = PCA(n_components=2, random_state=42).fit_transform(robust_x)
-    for tab, model_name in zip(improved_tabs, names):
-        with tab:
-            labels = after_labels[model_name]
-            metrics = cluster_metrics(robust_x, labels, ignore_noise=(model_name == "DBSCAN"))
-            m1, m2, m3 = st.columns(3)
-            m1.metric("군집 수", f"{metrics['군집 수']}개")
-            m2.metric("노이즈 수", f"{metrics['노이즈 수']:,}개")
-            m3.metric("실루엣 점수", format_score(metrics["실루엣 점수"]))
-
-            visual_df = work[DISPLAY_COLUMNS].copy()
-            visual_df["주성분 1"] = pca_after[:, 0]
-            visual_df["주성분 2"] = pca_after[:, 1]
-            visual_df["군집"] = [display_cluster_label(value) for value in labels]
-            scatter = px.scatter(
-                visual_df, x="주성분 1", y="주성분 2", color="군집", hover_name="도서관명",
-                hover_data={"행정구역": True, "시군구": True},
-                title=f"RobustScaler 적용 후 {model_name} 결과 (PCA 시각화)"
-            )
-            st.plotly_chart(scatter, use_container_width=True)
-            st.dataframe(
-                make_cluster_summary(raw_x, labels, features),
-                use_container_width=True, hide_index=True
-            )
-            if model_name == "DBSCAN":
-                st.caption("DBSCAN 실루엣 점수는 노이즈(-1)를 제외한 데이터만으로 계산했습니다. 노이즈 비율과 작은 군집도 함께 살펴보세요.")
-
-    st.subheader("4. 성능 개선 결과 해석")
-    for _, result in improvement_df.iterrows():
-        delta = result["점수 변화"]
-        if pd.isna(delta):
-            st.write(f"- **{result['모델']}**: 두 결과 중 하나의 실루엣 점수를 계산할 수 없어 수치 비교가 어렵습니다.")
-        elif delta > 0.001:
-            st.write(f"- **{result['모델']}**: 실루엣 점수가 {delta:+.3f} 변해 개선 전보다 높아졌습니다.")
-        elif delta < -0.001:
-            st.write(f"- **{result['모델']}**: 실루엣 점수가 {delta:+.3f} 변해 개선 전보다 낮아졌습니다. 이 모델에서는 RobustScaler가 더 적합했다고 보기 어렵습니다.")
-        else:
-            st.write(f"- **{result['모델']}**: 실루엣 점수 변화가 {delta:+.3f}로 거의 없습니다.")
-
-    kmeans_change = improvement_df.loc[improvement_df["모델"] == "K-Means", "점수 변화"].iloc[0]
-    hierarchical_change = improvement_df.loc[improvement_df["모델"] == "계층적 군집", "점수 변화"].iloc[0]
-    dbscan_row = improvement_df.loc[improvement_df["모델"] == "DBSCAN"].iloc[0]
-    st.markdown("**보고서에 쓸 수 있는 해석 예시**")
-    if pd.notna(kmeans_change) and pd.notna(hierarchical_change):
+    st.subheader("4. 평가 지표를 바탕으로 알게 된 사실")
+    baseline_score = comparison_df.loc[comparison_df["모델"] == BASELINE_NAME, "실루엣 점수"].iloc[0]
+    valid_candidates = comparison_df[(comparison_df["모델"] != BASELINE_NAME) & comparison_df["최종 후보 조건"]].dropna(subset=["실루엣 점수"])
+    if not valid_candidates.empty:
+        top = valid_candidates.sort_values("실루엣 점수", ascending=False).iloc[0]
+        delta = float(top["실루엣 점수"] - baseline_score) if pd.notna(baseline_score) else np.nan
         st.write(
-            f"기존 StandardScaler 대신 중앙값과 사분위 범위를 사용하는 RobustScaler를 적용하고 "
-            f"동일한 변수와 모델 설정으로 다시 학습하였다. K-Means의 실루엣 점수 변화는 {kmeans_change:+.3f}, "
-            f"계층적 군집의 변화는 {hierarchical_change:+.3f}였다. "
-            + ("두 모델 모두 점수가 높아져 이번 데이터에서는 RobustScaler가 군집 분리에 도움이 되는 경향을 보였다." if kmeans_change > 0 and hierarchical_change > 0 else
-               "모델에 따라 점수 변화가 달라 RobustScaler가 모든 군집 모델에 더 적합하다고 단정할 수는 없다.")
-            + f" DBSCAN의 개선 후 노이즈는 {int(dbscan_row['개선 후 노이즈 수'])}개이고 가장 작은 군집은 {int(dbscan_row['개선 후 가장 작은 군집'])}곳이므로, "
-            "실루엣 점수뿐 아니라 군집에 포함된 도서관 수와 군집 크기도 함께 고려해야 한다."
+            f"현재 조건을 충족한 후보 가운데 {top['모델']}의 실루엣 점수가 가장 높았습니다 "
+            f"(점수 {top['실루엣 점수']:.3f}, 베이스라인 대비 {delta:+.3f}). "
+            f"이 결과는 해당 변수와 전처리, 모델 설정 안에서의 비교입니다."
         )
+    else:
+        st.write("현재 설정에서는 최종 후보 조건을 만족하는 후보 모델이 없습니다. 군집 수나 DBSCAN 설정을 조정해 다시 비교할 수 있습니다.")
 
-    st.subheader("5. 데이터가 군집 학습에 적합했을까?")
+    for _, r in improvement_df.iterrows():
+        change = r["점수 변화"]
+        if pd.isna(change):
+            st.write(f"- {r['모델']}: 점수 계산이 어려워 개선 여부를 비교할 수 없습니다.")
+        elif change > 0:
+            st.write(f"- {r['모델']}: RobustScaler 적용 후 실루엣 점수가 {change:+.3f} 변해 상승했습니다.")
+        elif change < 0:
+            st.write(f"- {r['모델']}: RobustScaler 적용 후 실루엣 점수가 {change:+.3f} 변해 하락했습니다.")
+        else:
+            st.write(f"- {r['모델']}: 전처리 변경에 따른 점수 차이가 거의 없습니다.")
+
+    st.subheader("5. 보고서에 활용할 해석")
     st.write(
-        f"현재 분석에 사용한 행은 {len(work):,}개이고, 선택 변수는 {len(features)}개입니다. "
-        f"결측 또는 음수 때문에 제외된 행은 {prep_info['removed_invalid']:,}개입니다. "
-        "분석 대상 대부분을 유지한 상태에서 군집화를 수행할 수 있다는 점은 긍정적입니다. "
-        "다만 실루엣 점수는 모델과 설정에 따라 달라지고, 점수가 아주 높지 않다면 도서관 유형 사이의 특성이 일부 겹친다는 뜻일 수 있습니다. "
-        "따라서 이번 결과는 데이터 안에서 일정한 유형 차이를 탐색하는 데는 활용할 수 있지만, "
-        "모든 도서관이 뚜렷하게 구분된다고 단정하기보다는 참고용 유형화 결과로 해석하는 것이 적절합니다."
+        f"본 데이터는 {len(work):,}개 도서관 중 결측 또는 음수값이 있는 {prep_info['removed_invalid']:,}개 행을 제외하고 분석했습니다. "
+        "IQR 기준의 이상치 후보는 실제 대규모 도서관일 가능성이 있어 일괄 삭제하지 않았고, 로그 변환과 스케일러 변경으로 영향을 줄이는 방식을 비교했습니다. "
+        "StandardScaler와 RobustScaler의 실루엣 점수를 비교한 결과 모델별 변화가 달랐으므로, 모든 모델에 한 가지 전처리 방식이 항상 더 좋다고 결론 내릴 수는 없습니다. "
+        "실루엣 점수와 함께 군집 수, 최소 군집 크기, DBSCAN 노이즈 수를 고려해 결과를 해석했습니다."
     )
-    st.warning(
-        "RobustScaler가 모든 데이터에서 항상 더 좋은 것은 아닙니다. 이번 점수와 군집 크기를 확인해 실제로 개선된 모델만 채택하고, "
-        "점수가 낮아지거나 너무 작은 군집이 생긴 모델은 기존 전처리를 유지하는 것도 타당합니다."
-    )
+    st.info("실루엣 점수는 군집의 분리 정도를 요약하는 지표입니다. 점수가 높더라도 군집의 실제 의미나 유용성이 자동으로 보장되는 것은 아니므로 군집별 도서관 특성도 함께 확인해야 합니다.")
 
 # ============================================================
-# 페이지 6: 군집 해석
+# 페이지 6: 느낀점
 # ============================================================
-elif page == "🔎 군집 해석":
-    st.title("🔎 군집 해석")
-    st.write("군집 번호 자체에는 순서나 등급 의미가 없습니다. 각 군집의 평균과 중앙값을 비교해 특성을 해석합니다.")
-
-    selected_model = st.selectbox("해석할 모델", CANDIDATE_NAMES + [BASELINE_NAME])
-    labels = model_results[selected_model]
-    available_labels = list(dict.fromkeys([display_cluster_label(value) for value in labels]))
-    selected_cluster = st.selectbox("살펴볼 군집", available_labels)
-    mask = np.array([display_cluster_label(value) == selected_cluster for value in labels])
-    cluster_raw = raw_x.loc[mask]
-    cluster_work = work.loc[mask]
-
-    left, right = st.columns(2)
-    left.metric("선택한 군집의 도서관 수", f"{len(cluster_work):,}곳")
-    right.metric("전체에서 차지하는 비율", f"{len(cluster_work) / len(work) * 100:.1f}%")
-
-    st.subheader("1. 선택 군집의 특성")
-    profile = pd.DataFrame({
-        "변수": features,
-        "평균": [cluster_raw[column].mean() for column in features],
-        "중앙값": [cluster_raw[column].median() for column in features],
-        "전체 평균": [raw_x[column].mean() for column in features],
-    })
-    st.dataframe(profile.style.format({"평균": "{:,.1f}", "중앙값": "{:,.1f}", "전체 평균": "{:,.1f}"}),
-                 use_container_width=True, hide_index=True)
-
-    normalized = pd.DataFrame({
-        "변수": features,
-        "선택 군집 평균": [np.log1p(cluster_raw[column]).mean() if use_log else cluster_raw[column].mean() for column in features],
-        "전체 평균": [np.log1p(raw_x[column]).mean() if use_log else raw_x[column].mean() for column in features],
-    })
-    normalized_long = normalized.melt(id_vars="변수", var_name="비교 대상", value_name="평균")
-    fig_profile = px.bar(normalized_long, x="변수", y="평균", color="비교 대상", barmode="group",
-                         title="선택 군집과 전체 데이터의 변수 평균 비교")
-    st.plotly_chart(fig_profile, use_container_width=True)
-
-    st.subheader("2. 이 군집에 속한 도서관")
-    library_cols = ["도서관명", "행정구역", "시군구"] + features
-    if selected_cluster == "노이즈":
-        st.info("노이즈는 DBSCAN에서 다른 군집에 속하지 않는 것으로 판정된 도서관입니다.")
-    st.dataframe(cluster_work[library_cols].sort_values(features[0], ascending=False),
-                 use_container_width=True, hide_index=True, height=360)
-
-    st.subheader("3. 지역 분포")
-    region_df = cluster_work["행정구역"].value_counts().head(10).rename_axis("행정구역").reset_index(name="도서관 수")
-    st.plotly_chart(px.bar(region_df, x="도서관 수", y="행정구역", orientation="h",
-                           title="선택 군집의 행정구역별 도서관 수"), use_container_width=True)
-
-    st.info("해석 예시: 장서수와 사서수가 전체 평균보다 높고 대출권수도 높다면 ‘장서·인력·이용 규모가 큰 도서관 유형’이라고 설명할 수 있습니다. 실제 유형명은 표의 평균과 중앙값을 확인한 뒤 붙이세요.")
+elif page == "📝 느낀점":
+    st.title("📝 느낀점")
+    st.write("AI를 활용해 데이터를 분석하면서 느끼고 배운 점을 자신의 말로 정리해 보세요.")
+    reflection = st.text_area(
+        "분석하면서 느낀 점",
+        placeholder="예: 처음에는 군집화 모델의 점수만 높으면 좋은 모델이라고 생각했지만...",
+        height=180,
+        key="reflection_main",
+    )
+    learned = st.text_area(
+        "새롭게 알게 된 점",
+        placeholder="예: 이상치 후보를 무조건 삭제하지 않고 실제 데이터의 의미를 확인해야 한다는 점을 배웠다...",
+        height=150,
+        key="reflection_learned",
+    )
+    ai_role = st.text_area(
+        "AI를 활용한 부분과 내가 직접 판단한 부분",
+        placeholder="예: AI에게 코드 구조와 모델 원리를 질문했고, 탐구 질문과 변수 선택 및 결과 해석은 직접 검토했다...",
+        height=150,
+        key="reflection_ai_role",
+    )
+    reflection_text = (
+        "[분석하면서 느낀 점]\n" + reflection + "\n\n"
+        "[새롭게 알게 된 점]\n" + learned + "\n\n"
+        "[AI 활용과 직접 판단한 부분]\n" + ai_role
+    )
+    st.download_button(
+        "느낀점 기록 다운로드", data=reflection_text.encode("utf-8-sig"),
+        file_name="공공도서관_탐구_느낀점.txt", mime="text/plain",
+        disabled=not any([reflection.strip(), learned.strip(), ai_role.strip()]),
+    )
 
 st.divider()
 st.caption("자료: 문화체육관광부 국가도서관통계 전국공공도서관정보(2024.12.31. 기준). 군집 결과는 선택한 변수와 전처리·모델 설정에 따라 달라집니다.")
