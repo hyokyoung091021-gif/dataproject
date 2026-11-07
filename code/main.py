@@ -25,7 +25,7 @@ CORE_FEATURES = ["장서수(인쇄)", "사서수", "대출자수", "대출권수
 EXTRA_FEATURES = ["자료구입비(천원)"]
 NUMERIC_COLUMNS = CORE_FEATURES + EXTRA_FEATURES
 DISPLAY_COLUMNS = ["도서관명", "행정구역", "시군구"]
-BASELINE_NAME = "베이스라인: K-Means (K=3)"
+BASELINE_NAME = "베이스라인: K-Means (선택한 K)"
 CANDIDATE_NAMES = ["K-Means 군집 수 탐색", "계층적 군집", "DBSCAN"]
 
 @st.cache_data(show_spinner="공공도서관 데이터를 불러오는 중입니다...")
@@ -139,10 +139,27 @@ def best_hierarchical(x, max_k):
     return best
 
 
-def run_model_comparison(work, raw_x, scaled_x, max_k, eps, min_samples,
+def calculate_elbow(x, max_k):
+    """K-Means의 K별 군집 내 제곱합(inertia)을 계산합니다."""
+    rows = []
+    for candidate_k in range(2, max_k + 1):
+        model = KMeans(n_clusters=candidate_k, random_state=42, n_init=20)
+        model.fit(x)
+        rows.append({"K": candidate_k, "군집 내 제곱합(SSE)": float(model.inertia_)})
+    elbow_df = pd.DataFrame(rows)
+    previous_sse = elbow_df["군집 내 제곱합(SSE)"].shift(1)
+    elbow_df["직전 K 대비 감소량"] = previous_sse - elbow_df["군집 내 제곱합(SSE)"]
+    elbow_df["직전 K 대비 감소율(%)"] = (
+        elbow_df["직전 K 대비 감소량"] / previous_sse * 100
+    )
+    return elbow_df
+
+
+def run_model_comparison(work, raw_x, scaled_x, max_k, baseline_k, eps, min_samples,
                          min_cluster_pct, min_coverage_pct):
-    # 기준선: 별도 튜닝 없이 K=3으로 실행하는 기본 K-Means
-    baseline_labels = KMeans(n_clusters=3, random_state=42, n_init=20).fit_predict(scaled_x)
+    # K 선택 근거는 엘보 그래프에서 확인하고, 선택한 K로 베이스라인을 실행합니다.
+    baseline_labels = KMeans(n_clusters=baseline_k, random_state=42, n_init=20).fit_predict(scaled_x)
+    elbow_df = calculate_elbow(scaled_x, max_k)
 
     # 후보 1: K=2~max_k를 같은 실루엣 기준으로 비교해 K-Means 군집 수 선택
     km_best = best_kmeans(scaled_x, max_k)
@@ -158,7 +175,7 @@ def run_model_comparison(work, raw_x, scaled_x, max_k, eps, min_samples,
         "DBSCAN": dbscan_labels,
     }
     params = {
-        BASELINE_NAME: "K=3, random_state=42",
+        BASELINE_NAME: f"K={baseline_k} (엘보 그래프를 참고해 선택), random_state=42",
         "K-Means 군집 수 탐색": f"선택된 K={km_best['k']} (탐색 범위 2~{max_k})",
         "계층적 군집": f"Ward 방식, 선택된 K={hierarchical_best['k']} (탐색 범위 2~{max_k})",
         "DBSCAN": f"eps={eps:.2f}, min_samples={min_samples}",
@@ -194,7 +211,7 @@ def run_model_comparison(work, raw_x, scaled_x, max_k, eps, min_samples,
     for name, labels in labels_by_name.items():
         pca_df[name] = [display_cluster_label(value) for value in labels]
 
-    return labels_by_name, comparison_df, display_df, pca_df, params
+    return labels_by_name, comparison_df, display_df, pca_df, params, elbow_df
 
 
 def make_cluster_summary(raw_x, labels, features):
@@ -231,7 +248,7 @@ if missing_columns:
 st.sidebar.title("📚 공공도서관 분석")
 page = st.sidebar.radio(
     "메뉴",
-    ["🧭 탐구 질문과 모델", "🧹 데이터 전처리", "🤖 모델 학습 결과", "📏 베이스라인 비교", "🔎 군집 해석"],
+    ["🧭 탐구 질문과 모델", "🧹 데이터 전처리", "🤖 모델 학습 결과", "📊 모델 평가", "🔎 군집 해석"],
 )
 st.sidebar.divider()
 st.sidebar.subheader("공통 전처리 설정")
@@ -254,6 +271,13 @@ use_log = st.sidebar.checkbox(
 st.sidebar.divider()
 st.sidebar.subheader("모델 비교 설정")
 max_k = st.sidebar.slider("K 탐색 최대값 (K-Means·계층적 군집)", 3, 8, 8)
+baseline_k = st.sidebar.slider(
+    "베이스라인 K 선택",
+    min_value=2,
+    max_value=max_k,
+    value=min(3, max_k),
+    help="모델 평가 메뉴의 엘보 그래프에서 꺾이는 지점을 참고해 선택하세요.",
+)
 eps = st.sidebar.slider("DBSCAN 거리 기준(eps)", 0.20, 2.00, 0.65, 0.05)
 min_samples = st.sidebar.slider("DBSCAN 최소 이웃 수", 3, 15, 5)
 min_cluster_pct = st.sidebar.slider("최소 군집 크기 기준(전체 대비 %)", 0.5, 5.0, 1.0, 0.5)
@@ -275,8 +299,8 @@ if len(work) < 10:
     st.stop()
 
 try:
-    model_results, comparison_df, result_df, pca_df, model_params = run_model_comparison(
-        work, raw_x, scaled_x, max_k, eps, min_samples, min_cluster_pct, min_coverage_pct
+    model_results, comparison_df, result_df, pca_df, model_params, elbow_df = run_model_comparison(
+        work, raw_x, scaled_x, max_k, baseline_k, eps, min_samples, min_cluster_pct, min_coverage_pct
     )
 except Exception as error:
     st.error("모델 학습 중 문제가 발생했습니다. 분석 설정을 바꾸어 다시 실행해 주세요.")
@@ -326,10 +350,12 @@ if page == "🧭 탐구 질문과 모델":
     st.subheader("베이스라인은 무엇일까?")
     st.write(
         "베이스라인은 후보 모델의 결과가 좋은지 판단하기 위한 기준선입니다. "
-        "이번 탐구에서는 이해하기 쉽고 널리 쓰이는 K-Means를 기본 설정인 K=3으로 실행한 결과를 베이스라인으로 정했습니다. "
-        "각 도서관은 미래의 값이 아니라, 비슷한 특성을 가진 군집 번호를 부여받습니다."
+        "이번 탐구에서는 K-Means를 베이스라인으로 정했습니다. 군집 수 K는 엘보 그래프에서 "
+        "군집 내 제곱합(SSE)의 감소 폭이 뚜렷하게 줄어드는 꺾임 지점을 참고해 선택합니다. "
+        "사이드바에서 선택한 K가 베이스라인에 적용됩니다. 각 도서관은 미래의 값이 아니라, "
+        "비슷한 특성을 가진 군집 번호를 부여받습니다."
     )
-    st.info("베이스라인: K-Means (K=3, random_state=42). 후보 모델은 K-Means 군집 수 탐색, 계층적 군집, DBSCAN입니다.")
+    st.info(f"베이스라인: K-Means (K={baseline_k}, 엘보 방법으로 K 선택). 후보 모델은 K-Means 군집 수 탐색, 계층적 군집, DBSCAN입니다.")
 
     st.subheader("모델에 사용하는 변수")
     feature_guide = {
@@ -470,15 +496,74 @@ elif page == "🤖 모델 학습 결과":
                        file_name="공공도서관_군집분석결과.csv", mime="text/csv")
 
 # ============================================================
-# 페이지 4: 베이스라인 비교
+# 페이지 4: 모델 평가
 # ============================================================
-elif page == "📏 베이스라인 비교":
-    st.title("📏 모델 후보와 베이스라인 비교")
-    st.subheader("1. 베이스라인의 역할")
+elif page == "📊 모델 평가":
+    st.title("📊 모델 평가")
+    st.write("군집화 평가에서는 실루엣 점수로 모델 결과를 비교하고, 엘보 방법으로 K-Means의 군집 수를 선택한 근거를 확인합니다.")
+
+    st.subheader("1. 엘보 방법: 베이스라인의 K를 어떻게 정했을까?")
+    st.write(
+        "K-Means의 K를 늘리면 보통 군집 내 제곱합(SSE)은 계속 감소합니다. "
+        "하지만 K가 커질수록 군집을 더 잘게 나누는 것이므로, SSE가 급격히 줄어들다가 "
+        "감소 폭이 완만해지는 지점(팔꿈치처럼 꺾이는 지점)을 살펴 K를 정합니다. "
+        "아래 그래프에서 선택한 K를 확인하고, 데이터의 꺾임과 얼마나 잘 맞는지 설명하세요."
+    )
+    elbow_fig = px.line(
+        elbow_df,
+        x="K",
+        y="군집 내 제곱합(SSE)",
+        markers=True,
+        text="K",
+        title="K-Means 엘보 그래프: K와 군집 내 제곱합(SSE)의 관계",
+    )
+    elbow_fig.update_traces(textposition="top center")
+    elbow_fig.add_vline(
+        x=baseline_k,
+        line_dash="dash",
+        annotation_text=f"선택한 K={baseline_k}",
+        annotation_position="top right",
+    )
+    elbow_fig.update_layout(xaxis_title="군집 수 K", yaxis_title="군집 내 제곱합(SSE)")
+    st.plotly_chart(elbow_fig, use_container_width=True)
+    elbow_view = elbow_df.copy()
+    elbow_view["군집 내 제곱합(SSE)"] = elbow_view["군집 내 제곱합(SSE)"].map(lambda v: f"{v:,.2f}")
+    elbow_view["직전 K 대비 감소량"] = elbow_view["직전 K 대비 감소량"].map(lambda v: "-" if pd.isna(v) else f"{v:,.2f}")
+    elbow_view["직전 K 대비 감소율(%)"] = elbow_view["직전 K 대비 감소율(%)"].map(lambda v: "-" if pd.isna(v) else f"{v:.1f}%")
+    st.dataframe(elbow_view, use_container_width=True, hide_index=True)
+
+    current_row = elbow_df.loc[elbow_df["K"] == baseline_k]
+    previous_row = elbow_df.loc[elbow_df["K"] == baseline_k - 1]
+    next_row = elbow_df.loc[elbow_df["K"] == baseline_k + 1]
+    next_next_row = elbow_df.loc[elbow_df["K"] == baseline_k + 2]
+    if not current_row.empty and not previous_row.empty and not next_row.empty:
+        before_sse = float(previous_row["군집 내 제곱합(SSE)"].iloc[0])
+        current_sse = float(current_row["군집 내 제곱합(SSE)"].iloc[0])
+        next_sse = float(next_row["군집 내 제곱합(SSE)"].iloc[0])
+        before_drop = (before_sse - current_sse) / before_sse * 100
+        after_drop = (current_sse - next_sse) / current_sse * 100
+        later_text = ""
+        if not next_next_row.empty:
+            next_next_sse = float(next_next_row["군집 내 제곱합(SSE)"].iloc[0])
+            later_drop = (next_sse - next_next_sse) / next_sse * 100
+            later_text = f" 그다음 K={baseline_k+1}에서 K={baseline_k+2}로 늘릴 때의 감소율은 {later_drop:.1f}%입니다."
+        st.info(
+            f"현재 베이스라인은 K={baseline_k}입니다. K를 {baseline_k-1}에서 {baseline_k}로 늘릴 때 "
+            f"SSE가 {before_drop:.1f}% 감소하고, {baseline_k}에서 {baseline_k+1}로 늘릴 때는 "
+            f"{after_drop:.1f}% 감소합니다.{later_text} 그래프와 감소율을 함께 보고 감소 폭이 완만해지는 "
+            "꺾임 지점을 선택한 이유로 설명하세요. 엘보 지점은 데이터에 따라 다소 주관적일 수 있습니다."
+        )
+    else:
+        st.info(
+            f"현재 베이스라인은 K={baseline_k}입니다. 그래프에서 이 지점 전후의 SSE 감소 폭을 비교해 "
+            "감소율이 완만해지는지 확인하고 선택 이유를 설명하세요."
+        )
+
+    st.subheader("2. 베이스라인은 무엇을 하는 모델일까?")
     st.write(
         "베이스라인은 후보 모델이 얼마나 나아졌는지 비교하기 위한 기준선입니다. "
-        "이번 앱에서는 가장 단순하게 실행할 수 있는 K-Means(K=3)를 기준으로 두었습니다. "
-        "이 모델은 각 도서관을 세 그룹 중 하나로 나누며, 실루엣 점수를 기준 성능으로 사용합니다."
+        f"이번 앱에서는 엘보 그래프를 참고해 선택한 K={baseline_k}의 K-Means를 기준으로 두었습니다. "
+        f"이 모델은 각 도서관을 {baseline_k}개 그룹 중 하나로 나누며, 후보 모델과 비교할 때 실루엣 점수를 사용합니다."
     )
     baseline_row = comparison_df.loc[comparison_df["모델"] == BASELINE_NAME].iloc[0]
     a, b, c = st.columns(3)
@@ -486,7 +571,7 @@ elif page == "📏 베이스라인 비교":
     b.metric("베이스라인 실루엣 점수", format_score(baseline_row["실루엣 점수"]))
     c.metric("베이스라인 최소 군집", f"{int(baseline_row['가장 작은 군집'])}곳")
 
-    st.subheader("2. 후보 모델별 베이스라인과의 차이")
+    st.subheader("3. 후보 모델별 베이스라인과의 차이")
     comparison_view = comparison_df.copy()
     comparison_view["실루엣 점수"] = comparison_view["실루엣 점수"].map(format_score)
     comparison_view["베이스라인 대비 점수 차이"] = comparison_view["베이스라인 대비 점수 차이"].map(
@@ -505,16 +590,31 @@ elif page == "📏 베이스라인 비교":
     fig.update_layout(xaxis_tickangle=-20, yaxis_range=[-1, 1])
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("3. 어떤 모델을 최종 후보로 볼까?")
+    st.subheader("4. 어떤 모델을 최종 후보로 볼까?")
     candidates = comparison_df[(comparison_df["모델"] != BASELINE_NAME) & comparison_df["최종 후보 조건"]].copy()
     if len(candidates):
         chosen = candidates.sort_values("실루엣 점수", ascending=False).iloc[0]
-        delta = chosen["베이스라인 대비 점수 차이"]
-        st.success(f"현재 설정에서 최종 후보로 추천되는 모델은 **{chosen['모델']}**입니다. 실루엣 점수는 {chosen['실루엣 점수']:.3f}이며, 베이스라인보다 {delta:+.3f} 차이입니다.")
+        delta = float(chosen["베이스라인 대비 점수 차이"])
+        if delta > 0:
+            st.success(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**입니다. 실루엣 점수 {chosen['실루엣 점수']:.3f}으로 베이스라인보다 {delta:+.3f} 높습니다.")
+        elif delta < 0:
+            st.warning(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**이지만, 실루엣 점수 {chosen['실루엣 점수']:.3f}으로 베이스라인보다 {delta:+.3f} 낮습니다. 현재 설정에서는 베이스라인이 더 높은 점수를 보였습니다.")
+        else:
+            st.info(f"후보 중 가장 높은 점수를 보인 모델은 **{chosen['모델']}**이며, 실루엣 점수는 베이스라인과 같습니다({chosen['실루엣 점수']:.3f}).")
         st.write(
-            f"선정 근거: 군집 수 {int(chosen['군집 수'])}개, 노이즈 {int(chosen['노이즈 수'])}개, "
-            f"군집 포함률 {chosen['군집 포함률(%)']:.1f}%, 가장 작은 군집 {int(chosen['가장 작은 군집'])}곳입니다. "
-            "점수뿐 아니라 군집이 지나치게 작거나 많은 데이터가 노이즈로 빠지지 않는지도 함께 확인했습니다."
+            f"후보 모델의 군집 수는 {int(chosen['군집 수'])}개, 노이즈는 {int(chosen['노이즈 수'])}개, "
+            f"군집 포함률은 {chosen['군집 포함률(%)']:.1f}%, 가장 작은 군집은 {int(chosen['가장 작은 군집'])}곳입니다. "
+            "따라서 점수 차이와 함께 군집 크기 및 노이즈 비율도 고려해야 합니다."
+        )
+        st.markdown("**보고서 해석 예시**")
+        st.write(
+            f"베이스라인 K-Means(K={baseline_k})의 실루엣 점수는 {baseline_row['실루엣 점수']:.3f}이고, "
+            f"가장 높은 후보 모델인 {chosen['모델']}의 점수는 {chosen['실루엣 점수']:.3f}이다. "
+            f"두 점수의 차이는 {delta:+.3f}이므로, "
+            + ("후보 모델이 군집 간 분리와 군집 내부 응집도에서 더 나은 결과를 보였다." if delta > 0 else
+               "후보 모델이 베이스라인보다 더 나은 실루엣 점수를 보이지는 못했다." if delta < 0 else
+               "후보 모델과 베이스라인의 실루엣 점수는 같았다.")
+            + " 다만 DBSCAN은 노이즈를 제외하고 점수를 계산하므로 군집 포함률과 가장 작은 군집의 크기도 함께 고려하였다."
         )
     else:
         st.warning("현재 설정에서 최종 후보 조건을 충족한 후보 모델이 없습니다. DBSCAN 설정 또는 최소 군집 크기·포함률 기준을 조정해 보세요.")
@@ -526,7 +626,7 @@ elif page == "📏 베이스라인 비교":
             "최종 후보 조건에서 제외되었습니다. 이것은 DBSCAN이 항상 나쁘다는 뜻이 아니라, 이번 데이터와 설정에서는 군집이 충분한 규모로 형성되지 않았다는 의미입니다."
         )
 
-    st.subheader("4. 이번 비교에서 지켜야 할 공정한 조건")
+    st.subheader("5. 이번 비교에서 지켜야 할 공정한 조건")
     st.markdown(
         "- 네 가지 결과 모두 같은 도서관 행과 같은 선택 변수를 사용합니다.\n"
         "- 로그 변환 여부와 표준화 방법도 모든 모델에 동일하게 적용합니다.\n"
