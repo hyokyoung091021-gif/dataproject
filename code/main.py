@@ -9,7 +9,7 @@ import streamlit as st
 from sklearn.cluster import AgglomerativeClustering, DBSCAN, KMeans
 from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler, StandardScaler
 
 # ============================================================
 # 앱 기본 설정 및 데이터
@@ -248,7 +248,7 @@ if missing_columns:
 st.sidebar.title("📚 공공도서관 분석")
 page = st.sidebar.radio(
     "메뉴",
-    ["🧭 탐구 질문과 모델", "🧹 데이터 전처리", "🤖 모델 학습 결과", "📊 모델 평가", "🔎 군집 해석"],
+    ["🧭 탐구 질문과 모델", "🧹 데이터 전처리", "🤖 모델 학습 결과", "📊 모델 평가", "🛠️ 성능 개선", "🔎 군집 해석"],
 )
 st.sidebar.divider()
 st.sidebar.subheader("공통 전처리 설정")
@@ -636,7 +636,169 @@ elif page == "📊 모델 평가":
     st.caption("주의: DBSCAN 실루엣 점수는 노이즈를 제외하고 계산합니다. 따라서 실루엣 점수 차이만으로 모델이 무조건 더 우수하다고 단정하지 않고, 군집 포함률과 최소 군집 크기를 함께 해석합니다.")
 
 # ============================================================
-# 페이지 5: 군집 해석
+# 페이지 5: 성능 개선
+# ============================================================
+elif page == "🛠️ 성능 개선":
+    st.title("🛠️ 성능 개선")
+    st.write(
+        "기존 전처리와 개선 전처리를 같은 데이터와 변수에 적용한 뒤, "
+        "같은 군집화 모델을 다시 학습하여 실루엣 점수를 비교합니다."
+    )
+
+    st.subheader("1. 어떤 전처리를 개선했을까?")
+    st.markdown(
+        "**기존 전처리:** 선택 변수 → (선택한 경우) log1p 변환 → StandardScaler\n\n"
+        "**개선 전처리:** 선택 변수 → (선택한 경우) log1p 변환 → RobustScaler"
+    )
+    st.write(
+        "RobustScaler는 평균과 표준편차 대신 중앙값과 사분위 범위를 기준으로 값을 조정합니다. "
+        "따라서 일부 매우 큰 값이나 작은 값이 표준화 결과에 미치는 영향을 StandardScaler보다 줄이는 데 도움이 될 수 있습니다. "
+        "이 데이터는 도서관 규모의 차이가 크므로, 극단적으로 큰 규모의 도서관이 거리 계산에 미치는 영향을 줄이는 방법으로 시험합니다."
+    )
+    st.info(
+        "이번 비교에서는 데이터 행, 선택 변수, 로그 변환 여부, 모델 설정(K·eps·min_samples)을 그대로 유지하고 "
+        "스케일러만 StandardScaler에서 RobustScaler로 바꿉니다. 따라서 전처리 방식의 차이를 비교하기 쉽습니다."
+    )
+
+    # 같은 학습 대상과 변환 방식을 유지하고 스케일러만 교체
+    improvement_transformed = np.log1p(raw_x) if use_log else raw_x.copy()
+    standard_x_for_test = StandardScaler().fit_transform(improvement_transformed)
+    robust_x = RobustScaler().fit_transform(improvement_transformed)
+
+    def train_fixed_models(matrix):
+        return {
+            "K-Means": KMeans(n_clusters=baseline_k, random_state=42, n_init=20).fit_predict(matrix),
+            "계층적 군집": AgglomerativeClustering(n_clusters=baseline_k, linkage="ward").fit_predict(matrix),
+            "DBSCAN": DBSCAN(eps=eps, min_samples=min_samples).fit_predict(matrix),
+        }
+
+    before_labels = train_fixed_models(standard_x_for_test)
+    after_labels = train_fixed_models(robust_x)
+
+    rows = []
+    for model_name in ["K-Means", "계층적 군집", "DBSCAN"]:
+        before_is_dbscan = model_name == "DBSCAN"
+        before_metric = cluster_metrics(
+            standard_x_for_test, before_labels[model_name], ignore_noise=before_is_dbscan
+        )
+        after_metric = cluster_metrics(
+            robust_x, after_labels[model_name], ignore_noise=before_is_dbscan
+        )
+        rows.append({
+            "모델": model_name,
+            "기존 실루엣": before_metric["실루엣 점수"],
+            "개선 실루엣": after_metric["실루엣 점수"],
+            "점수 변화": after_metric["실루엣 점수"] - before_metric["실루엣 점수"]
+                if pd.notna(before_metric["실루엣 점수"]) and pd.notna(after_metric["실루엣 점수"]) else np.nan,
+            "개선 후 군집 수": after_metric["군집 수"],
+            "개선 후 노이즈 수": after_metric["노이즈 수"],
+            "개선 후 군집 포함률(%)": after_metric["군집 포함률(%)"],
+            "개선 후 가장 작은 군집": after_metric["가장 작은 군집"],
+            "개선 후 최소 군집 비율(%)": after_metric["최소 군집 비율(%)"],
+        })
+    improvement_df = pd.DataFrame(rows)
+
+    st.subheader("2. 같은 모델을 다시 학습한 결과")
+    st.caption(
+        f"K-Means와 계층적 군집은 K={baseline_k}, DBSCAN은 eps={eps:.2f}, "
+        f"min_samples={min_samples}로 기존·개선 전처리에서 동일하게 실행했습니다."
+    )
+    score_view = improvement_df.copy()
+    for col in ["기존 실루엣", "개선 실루엣", "점수 변화"]:
+        score_view[col] = score_view[col].map(format_score) if col != "점수 변화" else score_view[col].map(
+            lambda v: f"{v:+.3f}" if pd.notna(v) else "계산 불가"
+        )
+    score_view["개선 후 군집 포함률(%)"] = score_view["개선 후 군집 포함률(%)"].map(lambda v: f"{v:.1f}%")
+    score_view["개선 후 최소 군집 비율(%)"] = score_view["개선 후 최소 군집 비율(%)"].map(lambda v: f"{v:.1f}%")
+    st.dataframe(score_view, use_container_width=True, hide_index=True)
+
+    plot_rows = []
+    for _, result in improvement_df.iterrows():
+        if pd.notna(result["기존 실루엣"]):
+            plot_rows.append({"모델": result["모델"], "전처리": "기존: StandardScaler", "실루엣 점수": result["기존 실루엣"]})
+        if pd.notna(result["개선 실루엣"]):
+            plot_rows.append({"모델": result["모델"], "전처리": "개선: RobustScaler", "실루엣 점수": result["개선 실루엣"]})
+    if plot_rows:
+        improve_fig = px.bar(
+            pd.DataFrame(plot_rows), x="모델", y="실루엣 점수", color="전처리", barmode="group",
+            text_auto=".3f", title="전처리 변경 전후 실루엣 점수 비교"
+        )
+        improve_fig.update_layout(yaxis_range=[-1, 1])
+        st.plotly_chart(improve_fig, use_container_width=True)
+
+    st.subheader("3. 개선된 데이터로 다시 학습한 군집 결과")
+    improved_tabs = st.tabs(["K-Means", "계층적 군집", "DBSCAN"])
+    names = ["K-Means", "계층적 군집", "DBSCAN"]
+    pca_after = PCA(n_components=2, random_state=42).fit_transform(robust_x)
+    for tab, model_name in zip(improved_tabs, names):
+        with tab:
+            labels = after_labels[model_name]
+            metrics = cluster_metrics(robust_x, labels, ignore_noise=(model_name == "DBSCAN"))
+            m1, m2, m3 = st.columns(3)
+            m1.metric("군집 수", f"{metrics['군집 수']}개")
+            m2.metric("노이즈 수", f"{metrics['노이즈 수']:,}개")
+            m3.metric("실루엣 점수", format_score(metrics["실루엣 점수"]))
+
+            visual_df = work[DISPLAY_COLUMNS].copy()
+            visual_df["주성분 1"] = pca_after[:, 0]
+            visual_df["주성분 2"] = pca_after[:, 1]
+            visual_df["군집"] = [display_cluster_label(value) for value in labels]
+            scatter = px.scatter(
+                visual_df, x="주성분 1", y="주성분 2", color="군집", hover_name="도서관명",
+                hover_data={"행정구역": True, "시군구": True},
+                title=f"RobustScaler 적용 후 {model_name} 결과 (PCA 시각화)"
+            )
+            st.plotly_chart(scatter, use_container_width=True)
+            st.dataframe(
+                make_cluster_summary(raw_x, labels, features),
+                use_container_width=True, hide_index=True
+            )
+            if model_name == "DBSCAN":
+                st.caption("DBSCAN 실루엣 점수는 노이즈(-1)를 제외한 데이터만으로 계산했습니다. 노이즈 비율과 작은 군집도 함께 살펴보세요.")
+
+    st.subheader("4. 성능 개선 결과 해석")
+    for _, result in improvement_df.iterrows():
+        delta = result["점수 변화"]
+        if pd.isna(delta):
+            st.write(f"- **{result['모델']}**: 두 결과 중 하나의 실루엣 점수를 계산할 수 없어 수치 비교가 어렵습니다.")
+        elif delta > 0.001:
+            st.write(f"- **{result['모델']}**: 실루엣 점수가 {delta:+.3f} 변해 개선 전보다 높아졌습니다.")
+        elif delta < -0.001:
+            st.write(f"- **{result['모델']}**: 실루엣 점수가 {delta:+.3f} 변해 개선 전보다 낮아졌습니다. 이 모델에서는 RobustScaler가 더 적합했다고 보기 어렵습니다.")
+        else:
+            st.write(f"- **{result['모델']}**: 실루엣 점수 변화가 {delta:+.3f}로 거의 없습니다.")
+
+    kmeans_change = improvement_df.loc[improvement_df["모델"] == "K-Means", "점수 변화"].iloc[0]
+    hierarchical_change = improvement_df.loc[improvement_df["모델"] == "계층적 군집", "점수 변화"].iloc[0]
+    dbscan_row = improvement_df.loc[improvement_df["모델"] == "DBSCAN"].iloc[0]
+    st.markdown("**보고서에 쓸 수 있는 해석 예시**")
+    if pd.notna(kmeans_change) and pd.notna(hierarchical_change):
+        st.write(
+            f"기존 StandardScaler 대신 중앙값과 사분위 범위를 사용하는 RobustScaler를 적용하고 "
+            f"동일한 변수와 모델 설정으로 다시 학습하였다. K-Means의 실루엣 점수 변화는 {kmeans_change:+.3f}, "
+            f"계층적 군집의 변화는 {hierarchical_change:+.3f}였다. "
+            + ("두 모델 모두 점수가 높아져 이번 데이터에서는 RobustScaler가 군집 분리에 도움이 되는 경향을 보였다." if kmeans_change > 0 and hierarchical_change > 0 else
+               "모델에 따라 점수 변화가 달라 RobustScaler가 모든 군집 모델에 더 적합하다고 단정할 수는 없다.")
+            + f" DBSCAN의 개선 후 노이즈는 {int(dbscan_row['개선 후 노이즈 수'])}개이고 가장 작은 군집은 {int(dbscan_row['개선 후 가장 작은 군집'])}곳이므로, "
+            "실루엣 점수뿐 아니라 군집에 포함된 도서관 수와 군집 크기도 함께 고려해야 한다."
+        )
+
+    st.subheader("5. 데이터가 군집 학습에 적합했을까?")
+    st.write(
+        f"현재 분석에 사용한 행은 {len(work):,}개이고, 선택 변수는 {len(features)}개입니다. "
+        f"결측 또는 음수 때문에 제외된 행은 {prep_info['removed_invalid']:,}개입니다. "
+        "분석 대상 대부분을 유지한 상태에서 군집화를 수행할 수 있다는 점은 긍정적입니다. "
+        "다만 실루엣 점수는 모델과 설정에 따라 달라지고, 점수가 아주 높지 않다면 도서관 유형 사이의 특성이 일부 겹친다는 뜻일 수 있습니다. "
+        "따라서 이번 결과는 데이터 안에서 일정한 유형 차이를 탐색하는 데는 활용할 수 있지만, "
+        "모든 도서관이 뚜렷하게 구분된다고 단정하기보다는 참고용 유형화 결과로 해석하는 것이 적절합니다."
+    )
+    st.warning(
+        "RobustScaler가 모든 데이터에서 항상 더 좋은 것은 아닙니다. 이번 점수와 군집 크기를 확인해 실제로 개선된 모델만 채택하고, "
+        "점수가 낮아지거나 너무 작은 군집이 생긴 모델은 기존 전처리를 유지하는 것도 타당합니다."
+    )
+
+# ============================================================
+# 페이지 6: 군집 해석
 # ============================================================
 elif page == "🔎 군집 해석":
     st.title("🔎 군집 해석")
